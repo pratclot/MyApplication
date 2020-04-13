@@ -1,0 +1,17 @@
+<resources>
+    <string name="app_name">My Application</string>
+    <string name="edit_message">Enter a message</string>
+    <string name="button_send">Butt-on</string>
+    <string name="button_search">Search</string>
+    <string name="search_tune_text">look up a tune...</string>
+    <string name="placeholder_tune_key">no_key</string>
+    <string name="placeholder_tune_name">no_name</string>
+    <string name="placeholder_file_name">no_name</string>
+    <string name="server_address">10.0.2.2</string>
+    <string name="server_port">6666</string>
+    <string name="python_port">50051</string>
+    <string name="button_listen">Listen</string>
+    <string name="button_start_listen">Start</string>
+    <string name="button_stop_listen">Stop</string>
+    <string name="button_show_files">Show files</string>
+</resources>

@@ -1,0 +1,110 @@
+plugins {
+    id 'com.google.protobuf' version '0.8.8'
+}
+
+apply plugin: 'com.android.application'
+apply plugin: 'kotlin-android'
+apply plugin: 'kotlin-android-extensions'
+apply plugin: 'idea'
+
+android {
+    compileSdkVersion 29
+    buildToolsVersion "29.0.3"
+
+    defaultConfig {
+        applicationId "com.example.myapplication"
+        minSdkVersion 16
+        targetSdkVersion 29
+        versionCode 1
+        versionName "1.0"
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
+//    avoiding "Cannot fit requested classes in a single dex file" error
+        multiDexEnabled true
+
+    }
+
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            multiDexKeepProguard file('proguard-rules.pro')
+        }
+    }
+
+}
+
+def grpcVersion = '1.29.0-SNAPSHOT'
+def protobufVersion = '3.11.4'
+def protocVersion = protobufVersion
+
+dependencies {
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
+    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
+    implementation 'androidx.appcompat:appcompat:1.0.2'
+    implementation 'androidx.core:core-ktx:1.0.2'
+    implementation 'androidx.constraintlayout:constraintlayout:1.1.3'
+    testImplementation 'junit:junit:4.12'
+    androidTestImplementation 'androidx.test.ext:junit:1.1.1'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.2.0'
+    compileOnly "javax.annotation:javax.annotation-api:1.2"
+
+//    android-specific package to generate proto message classes
+    implementation "io.grpc:grpc-protobuf-lite:${grpcVersion}"
+
+//    binary to compile grpc classes
+    compileOnly "io.grpc:protoc-gen-grpc-java:${grpcVersion}"
+
+//    some stub-layer API
+    implementation "io.grpc:grpc-stub:${grpcVersion}"
+
+//    transport for grpc
+    runtimeOnly "io.grpc:grpc-okhttp:${grpcVersion}"
+
+//    android-specific channels for grpc, java ones did not work
+    implementation "io.grpc:grpc-android:${grpcVersion}"
+
+//    avoiding "Cannot fit requested classes in a single dex file" error
+    implementation 'com.android.support:multidex:1.0.3'
+
+//    security provider to implement TLS in grpc
+    implementation 'com.google.android.gms:play-services:6.1.+'
+
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.3.5'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.3.5'
+    implementation 'androidx.recyclerview:recyclerview:1.0.0'
+
+}
+
+protobuf {
+    protoc { artifact = "com.google.protobuf:protoc:${protocVersion}" }
+    plugins {
+        grpc {
+            artifact = "io.grpc:protoc-gen-grpc-java:${grpcVersion}"
+        }
+        java {
+            artifact = "com.google.protobuf:protoc-gen-javalite:3.0.0"
+        }
+    }
+    generateProtoTasks {
+        all()*.plugins {
+            grpc {
+                option "lite"
+            }
+            java {
+                option "lite"
+            }
+        }
+    }
+}
+
+sourceSets {
+    main {
+        java {
+            srcDirs 'build/generated/source/proto/release/grpc'
+            srcDirs 'build/generated/source/proto/release/java'
+        }
+    }
+}
