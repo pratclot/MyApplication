@@ -16,6 +16,9 @@ service TuneProto {
 
 service AudioSample {
   rpc searchSample (stream gAudioSample) returns (gTune) {}
+  rpc play_remotely (google.protobuf.Empty) returns (google.protobuf.Empty) {}
+  rpc clean_remote (google.protobuf.Empty) returns (google.protobuf.Empty) {}
+  rpc recognize(google.protobuf.Empty) returns (gTune) {}
 }
 
 message gTuneName {

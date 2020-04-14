@@ -6,6 +6,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 class WavTools() {
+//    Taken from https://gist.github.com/kmark/d8b1b01fb0d2febf5770
     companion object {
 
         /**

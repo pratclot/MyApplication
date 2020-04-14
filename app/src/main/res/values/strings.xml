@@ -14,4 +14,7 @@
     <string name="button_start_listen">Start</string>
     <string name="button_stop_listen">Stop</string>
     <string name="button_show_files">Show files</string>
+    <string name="button_play_remotely">Play</string>
+    <string name="button_clean_remote">Clean</string>
+    <string name="button_recognize">Recognize</string>
 </resources>

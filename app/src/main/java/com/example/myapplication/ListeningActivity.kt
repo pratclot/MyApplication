@@ -2,16 +2,21 @@ package com.example.myapplication
 
 import android.Manifest
 import android.app.Activity
+import android.content.ContentValues
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.MediaStore
 import android.util.Log
 import android.view.MotionEvent
 import android.view.View
+import android.widget.TextView
+import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -20,16 +25,21 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.demo.AudioSampleGrpc
 import com.example.demo.gTune
+import com.example.myapplication.util.Factories
+import com.example.myapplication.util.Factories.Companion.responseObserverEmpty
+import com.example.myapplication.util.Factories.Companion.responseObservergTune
 import com.example.myapplication.util.GrpcClient
 import com.example.myapplication.util.ViewTools
 import com.example.myapplication.util.WavTools
 import com.google.android.gms.security.ProviderInstaller
+import com.google.protobuf.Empty
 import io.grpc.ManagedChannel
 import io.grpc.android.AndroidChannelBuilder
 import io.grpc.stub.StreamObserver
 import kotlinx.coroutines.*
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
 import java.lang.IllegalArgumentException
 import kotlin.coroutines.CoroutineContext
 
@@ -55,7 +65,9 @@ class ListeningActivity : AppCompatActivity(), ProviderInstaller.ProviderInstall
     private lateinit var asyncStub: AudioSampleGrpc.AudioSampleStub
     private lateinit var outputStream: FileOutputStream
     private lateinit var file: File
+    private lateinit var appDir: File
     private lateinit var fileList: Array<String>
+    private lateinit var currentPlay: Unit
 
     private lateinit var recyclerView: RecyclerView
     private lateinit var viewAdapter: RecyclerView.Adapter<*>
@@ -78,6 +90,7 @@ class ListeningActivity : AppCompatActivity(), ProviderInstaller.ProviderInstall
         ActivityCompat.requestPermissions(this, permissions, REQUEST_RECORD_AUDIO_PERMISSION)
 
         viewManager = LinearLayoutManager(this)
+        makeAppDir()
         updateFileList()
         viewAdapter = ViewTools.Companion.MyAdapter(fileList)
         recyclerView = findViewById<RecyclerView>(R.id.filesView).apply {
@@ -97,9 +110,10 @@ class ListeningActivity : AppCompatActivity(), ProviderInstaller.ProviderInstall
     inner class TouchListener : RecyclerView.OnItemTouchListener {
         override fun onTouchEvent(rv: RecyclerView, e: MotionEvent) {
             Log.i(TAG, "onTouchEvent was triggered!")
-            resultIntent = Intent()
-            val touchedFileName: String = rv.findChildViewUnder(e.x, e.y).toString()
-            val requestFile = File(touchedFileName)
+            resultIntent = packageManager.getLaunchIntentForPackage("com.google.android.music")!!
+            val touchedTextView: TextView = rv.findChildViewUnder(e.x, e.y) as TextView
+            val touchedFileName: String = touchedTextView.getText().toString()
+            val requestFile = File(appDir, touchedFileName)
             val fileUri: Uri? = try {
                 FileProvider.getUriForFile(
                     applicationContext,
@@ -113,16 +127,18 @@ class ListeningActivity : AppCompatActivity(), ProviderInstaller.ProviderInstall
                 )
                 null
             }
+            Log.i(TAG, "The file is ${fileUri}")
             if (fileUri != null) {
                 resultIntent.setAction(Intent.ACTION_VIEW)
                 resultIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 resultIntent.setDataAndType(fileUri, contentResolver.getType(fileUri))
                 setResult(Activity.RESULT_OK, resultIntent)
+                startActivity(resultIntent)
             } else {
                 resultIntent.setDataAndType(null, "")
                 setResult(RESULT_CANCELED, resultIntent)
+                Log.i(TAG, "The file was null!")
             }
-            startActivity(resultIntent)
         }
 
         override fun onInterceptTouchEvent(rv: RecyclerView, e: MotionEvent): Boolean {
@@ -137,7 +153,6 @@ class ListeningActivity : AppCompatActivity(), ProviderInstaller.ProviderInstall
 
         override fun onRequestDisallowInterceptTouchEvent(disallowIntercept: Boolean) {
             Log.i(TAG, "boo!")
-            TODO("Not yet implemented")
         }
 
     }
@@ -149,6 +164,10 @@ class ListeningActivity : AppCompatActivity(), ProviderInstaller.ProviderInstall
     override fun onProviderInstalled() {
         host = getString(R.string.server_address)
         port = Integer.parseInt(getString(R.string.python_port))
+
+        var mchannel: ManagedChannel =
+            AndroidChannelBuilder.forAddress(host, port).context(applicationContext).build()
+        asyncStub = AudioSampleGrpc.newStub(mchannel)
 
     }
 
@@ -162,15 +181,8 @@ class ListeningActivity : AppCompatActivity(), ProviderInstaller.ProviderInstall
             AudioFormat.ENCODING_PCM_16BIT,
             BUFFER_SIZE
         )
-//        recorder!!.startRecording()
-
-        var mchannel: ManagedChannel =
-            AndroidChannelBuilder.forAddress(host, port).context(applicationContext).build()
-        asyncStub = AudioSampleGrpc.newStub(mchannel)
-
-//        val filePath = Environment.getExternalStorageDirectory().getPath() + "/track1.pcm"
-        val fileName = "track1.pcm"
-        file = File(applicationContext.filesDir, fileName)
+        val fileName = "track1.wav"
+        file = File(appDir, fileName)
         outputStream = file.outputStream()
 
         launch {
@@ -178,6 +190,7 @@ class ListeningActivity : AppCompatActivity(), ProviderInstaller.ProviderInstall
         }
     }
 
+    @RequiresApi(Build.VERSION_CODES.Q)
     fun stopRecording(view: View) {
         launch {
             Log.i(TAG, "Stopped recording")
@@ -185,6 +198,26 @@ class ListeningActivity : AppCompatActivity(), ProviderInstaller.ProviderInstall
             job.cancel()
             outputStream.close()
             WavTools.updateWavHeader(file)
+
+//            saveFileToMediaStorage()
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.Q)
+    fun saveFileToMediaStorage() {
+        val resolver = applicationContext.contentResolver
+        val contentValues = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, "track1.pcm")
+            put(MediaStore.MediaColumns.MIME_TYPE, "audio/*")
+            put(MediaStore.MediaColumns.RELATIVE_PATH, "Music/samples")
+        }
+
+        val uri = resolver.insert(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, contentValues)
+
+        if (uri != null) {
+            resolver.openInputStream(uri).use {
+//                need too figure out how to write to this stream
+            }
         }
     }
 
@@ -196,8 +229,30 @@ class ListeningActivity : AppCompatActivity(), ProviderInstaller.ProviderInstall
         viewAdapter.notifyDataSetChanged()
     }
 
+    fun playRemotely(view: View) {
+        currentPlay = asyncStub.playRemotely(Empty.newBuilder().build(), responseObserverEmpty())
+        Log.i(TAG, "Playing...")
+    }
+
+    fun cleanRemote(view: View) {
+        asyncStub.cleanRemote(Empty.newBuilder().build(), responseObserverEmpty())
+    }
+
+    fun recognize(view: View) {
+        asyncStub.recognize(Empty.newBuilder().build(), responseObservergTune())
+    }
+
     private fun listFiles(): Array<String> {
-        return applicationContext.fileList()
+        Log.i(TAG, "Files: ${applicationContext.filesDir.resolve(appDir).list()}")
+        return applicationContext.filesDir.resolve(appDir).list(
+            { file: File, s: String -> file.canonicalPath.endsWith("") }
+        )
+    }
+
+    private fun makeAppDir() {
+        val appDirName = "samples"
+        appDir = File(applicationContext.filesDir, appDirName)
+        appDir.mkdir()
     }
 
     private suspend fun readAudioAndSendToServer() {
@@ -206,25 +261,7 @@ class ListeningActivity : AppCompatActivity(), ProviderInstaller.ProviderInstall
         val data = ByteArray(BUFFER_SIZE * 2)
         Log.i(TAG, BUFFER_SIZE.toString())
 
-        class responseObserver : StreamObserver<gTune> {
-            override fun onNext(value: gTune?) {
-                if (value != null) {
-                    Log.i(TAG, "${value.name} matches the recording!")
-                }
-            }
-
-            override fun onError(t: Throwable?) {
-                Log.i(TAG, "ERROR!")
-                throw t!!
-            }
-
-            override fun onCompleted() {
-                Log.i(TAG, "call finished")
-            }
-
-        }
-
-        val requestObserver = asyncStub.searchSample(responseObserver())
+        val requestObserver = asyncStub.searchSample(responseObservergTune())
 
         recorder!!.startRecording()
         WavTools.writeWavHeader(
@@ -236,10 +273,20 @@ class ListeningActivity : AppCompatActivity(), ProviderInstaller.ProviderInstall
 
         launch(Dispatchers.IO) {
             while (isActive) {
-                val opStatus = recorder?.read(data, 0, BUFFER_SIZE)
-
+//                read mic input
+                val opStatus = recorder?.read(data, 0, BUFFER_SIZE * 2)
+//                send to grpc server
                 GrpcClient.searchSample(data, requestObserver)
-                outputStream.write(data)
+//                additionally write to file
+                try {
+                    outputStream.write(data)
+                } catch (e: IOException) {
+                    if (e.message == "Stream Closed") {
+                        Log.i(TAG, "Write stream was closed, handling clumsily")
+                    } else {
+                        throw e
+                    }
+                }
             }
         }
 
